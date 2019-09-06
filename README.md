@@ -1,6 +1,8 @@
 # logger-core
 
 
+[![](https://www.jitpack.io/v/Hymnal-Qin/logger-core.svg)](https://www.jitpack.io/#Hymnal-Qin/logger-core)
+
 
 
 
