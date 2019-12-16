@@ -24,7 +24,15 @@
  */
 package org.slf4j.impl
 
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.util.ContextInitializer
+import ch.qos.logback.classic.util.ContextSelectorStaticBinder
+import ch.qos.logback.core.CoreConstants
+import ch.qos.logback.core.joran.spi.JoranException
+import ch.qos.logback.core.status.StatusUtil
+import ch.qos.logback.core.util.StatusPrinter
 import org.slf4j.ILoggerFactory
+import org.slf4j.helpers.Util
 import org.slf4j.spi.LoggerFactoryBinder
 
 /**
@@ -35,17 +43,17 @@ import org.slf4j.spi.LoggerFactoryBinder
  */
 class StaticLoggerBinder private constructor() : LoggerFactoryBinder {
 
-    /** The ILoggerFactory instance returned by the [.getLoggerFactory] method
-     * should always be the same object
-     */
-    private val loggerFactory: ILoggerFactory = SimpleLoggerFactory()
-
     override fun getLoggerFactory(): ILoggerFactory {
-        return loggerFactory
+        if (!initialized) {
+            return defaultLoggerContext
+        }
+
+        checkNotNull(contextSelectorBinder.contextSelector) { "contextSelector cannot be null. See also $NULL_CS_URL" }
+        return contextSelectorBinder.contextSelector.loggerContext
     }
 
     override fun getLoggerFactoryClassStr(): String {
-        return StaticLoggerBinder.loggerFactoryClassStr
+        return contextSelectorBinder.javaClass.name
     }
 
     companion object {
@@ -66,8 +74,40 @@ class StaticLoggerBinder private constructor() : LoggerFactoryBinder {
             return singleton
         }
 
-        private val loggerFactoryClassStr = SimpleLoggerFactory::class.java.name
+        const val NULL_CS_URL = CoreConstants.CODES_URL + "#null_CS"
+
+        private val KEY = Any()
+
     }
+    //android-logback
+
+    private var initialized = false
+    private val defaultLoggerContext = LoggerContext()
+    private val contextSelectorBinder = ContextSelectorStaticBinder.getSingleton()
+
+    init {
+        defaultLoggerContext.name = CoreConstants.DEFAULT_CONTEXT_NAME
+        try {
+            try {
+                ContextInitializer(defaultLoggerContext).autoConfig()
+            } catch (je: JoranException) {
+                Util.report("Failed to auto configure default logger context", je)
+            }
+            // logback-292
+            if (!StatusUtil.contextHasStatusListener(defaultLoggerContext)) {
+                StatusPrinter.printInCaseOfErrorsOrWarnings(defaultLoggerContext)
+            }
+            contextSelectorBinder.init(defaultLoggerContext, KEY)
+            initialized = true
+        } catch (t: Exception) { // see LOGBACK-1159
+            Util.report(
+                "Failed to instantiate [" + LoggerContext::class.java.name
+                        + "]", t
+            )
+        }
+    }
+
+
 }
 
 /**
